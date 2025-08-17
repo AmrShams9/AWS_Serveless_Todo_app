@@ -1,0 +1,109 @@
+service: serverless-todo-app
+
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  stage: dev
+  environment:
+    TODOS_TABLE: Todos-${self:provider.stage}
+    ATTACHMENTS_S3_BUCKET: attachments-bucket-${self:provider.stage}-${aws:accountId}
+    SIGNED_URL_EXPIRATION: 300
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:GetItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:Query
+        - dynamodb:Scan
+      Resource: arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/${self:provider.environment.TODOS_TABLE}
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+        - s3:DeleteObject
+      Resource: arn:aws:s3:::attachments-bucket-${self:provider.stage}-${aws:accountId}/*
+
+functions:
+  Auth:
+    handler: src/lambda/auth.handler
+  GetTodos:
+    handler:  src/lambda/http/getTodos.getTodos
+    events:
+      - http:
+          path: todos
+          method: get
+          cors: true
+          # authorizer: Auth
+
+  CreateTodo:
+    handler: src/lambda/http/createTodo.createTodo
+    events:
+      - http:
+          path: todos
+          method: post
+          cors: true
+
+  UpdateTodo:
+    handler: src/lambda/http/updateTodo.updateTodo
+    events:
+      - http:
+          path: todos/{todoId}
+          method: patch
+          cors: true
+
+  DeleteTodo:
+    handler: src/lambda/http/deleteTodo.deleteTodo
+    events:
+      - http:
+          path: todos/{todoId}
+          method: delete
+          cors: true
+
+  GenerateUploadUrl:
+    handler: src/lambda/http/generateUploadUrl.generateUploadUrl
+    events:
+      - http:
+          path: todos/{todoId}/attachment
+          method: post
+          cors: true
+
+resources:
+  Resources:
+    TodosTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TODOS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: todoId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: todoId
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+
+    AttachmentsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: attachments-bucket-${self:provider.stage}-${aws:accountId}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - "*"
+              AllowedHeaders:
+                - "*"
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+              MaxAge: 3000
