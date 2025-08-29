@@ -1,48 +1,44 @@
-import { DynamoDBClient, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
+import middy from '@middy/core'
+import cors from '@middy/http-cors'
+import httpErrorHandler from '@middy/http-error-handler'
+import { deleteTodo } from '../../businessLogic/todos.mjs'
+import { createLogger } from '../../utils/logger.mjs'
+import { getUserId } from '../utils.mjs'
 
-const dynamoDb = new DynamoDBClient();
+const logger = createLogger('http')
 
-export async function deleteTodo(event) {
-  console.log('--- Incoming Event ---');
-  console.log(JSON.stringify(event, null, 2));
-
-  // Use a default userId for testing if no authorizer is set
-  const userId = event.requestContext?.authorizer?.principalId || 'test-user';
-
-  const todoId = event.pathParameters?.todoId;
-  if (!todoId) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: 'Missing todoId in path parameters' })
-    };
-  }
-
-  const command = new DeleteItemCommand({
-    TableName: process.env.TODOS_TABLE,
-    Key: {
-      userId: { S: userId },
-      todoId: { S: todoId }
-    }
-  });
-
+const deleteTodoHandler = async (event) => {
+  logger.info('Starting deleteTodo event', {
+    pathParameters: event.pathParameters,
+    hasHeaders: Boolean(event.headers)
+  })
   try {
-    const result = await dynamoDb.send(command);
-    console.log('DynamoDB delete result:', result);
+    const { todoId } = event.pathParameters || {}
+    if (!todoId) {
+      logger.error('Missing todoId in pathParameters')
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Missing path parameter: todoId' })
+      }
+    }
+
+    const userId = getUserId(event)
+    await deleteTodo(userId, todoId)
+
+    logger.info('Completing deleteTodo event')
 
     return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'DELETE,OPTIONS'
-      },
-      body: JSON.stringify({ message: `Todo ${todoId} deleted successfully` })
-    };
-  } catch (err) {
-    console.error('Failed to delete todo:', err);
+      statusCode: 204
+    }
+  } catch (error) {
+    logger.error('Error in deleteTodo handler', { error: error.message })
     return {
       statusCode: 500,
-      body: JSON.stringify({ message: 'Failed to delete todo', error: err.message })
-    };
+      body: JSON.stringify({ error: 'Failed to delete todo', message: error.message })
+    }
   }
 }
+
+export const handler = middy(deleteTodoHandler)
+  .use(httpErrorHandler())
+  .use(cors({ credentials: true }))

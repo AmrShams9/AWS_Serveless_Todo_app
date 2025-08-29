@@ -1,68 +1,40 @@
-import { v4 as uuidv4 } from 'uuid';
-import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
+import middy from '@middy/core'
+import cors from '@middy/http-cors'
+import httpErrorHandler from '@middy/http-error-handler'
+import { createTodo } from '../../businessLogic/todos.mjs'
+import { createLogger } from '../../utils/logger.mjs'
+import { getUserId } from '../utils.mjs'
 
-const dynamoDb = new DynamoDBClient();
+const logger = createLogger('http')
 
-export async function createTodo(event) {
-  console.log('--- Incoming Event ---');
-  console.log(JSON.stringify(event, null, 2));
-
-  let userId = 'test-user'; // default for Postman testing
-  if (event.requestContext?.authorizer?.principalId) {
-    userId = event.requestContext.authorizer.principalId;
-  }
-
-  let newTodo;
-  try {
-    newTodo = JSON.parse(event.body);
-  } catch (err) {
-    console.error('Failed to parse JSON body:', err);
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: 'Invalid JSON body' })
-    };
-  }
-
-  if (!newTodo.name || !newTodo.dueDate) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: 'Missing name or dueDate in request' })
-    };
-  }
-
-  const todoId = uuidv4();
-  const item = {
-    userId: { S: userId },
-    todoId: { S: todoId },
-    createdAt: { S: new Date().toISOString() },
-    name: { S: newTodo.name },
-    dueDate: { S: newTodo.dueDate },
-    done: { BOOL: false }
-  };
+const createTodoHandler = async (event) => {
+  logger.info('Starting createTodo event')
 
   try {
-    const command = new PutItemCommand({
-      TableName: process.env.TODOS_TABLE,
-      Item: item
-    });
+    const newTodo = JSON.parse(event.body)
+    const userId = getUserId(event)
+    const item = await createTodo(newTodo, userId)
 
-    const result = await dynamoDb.send(command);
-    console.log('DynamoDB result:', result);
+    logger.info('Completing createTodo event')
 
     return {
       statusCode: 201,
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST,OPTIONS'
+        'Access-Control-Allow-Credentials': true
       },
-      body: JSON.stringify({ item })
-    };
-  } catch (err) {
-    console.error('Failed to write to DynamoDB:', err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ message: 'Failed to create todo', error: err.message })
-    };
+      body: JSON.stringify({
+        item // ✅ fixed: use "item" instead of "newItem"
+      })
+    }
+  } catch (error) {
+    logger.error('Error creating todo', { error })
+    throw error
   }
 }
+  
+
+
+export const handler = middy(createTodoHandler)
+  .use(httpErrorHandler())
+  .use(cors({ credentials: true }))

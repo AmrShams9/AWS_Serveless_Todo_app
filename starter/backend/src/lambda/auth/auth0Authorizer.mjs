@@ -1,72 +1,94 @@
-import Axios from 'axios'
-import jsonwebtoken from 'jsonwebtoken'
+import axios from 'axios'
+import { decode, verify } from 'jsonwebtoken'
 import { createLogger } from '../../utils/logger.mjs'
 
 const logger = createLogger('auth')
-const jwksUrl = 'https://test-endpoint.auth0.com/.well-known/jwks.json'
 
-export async function handler(event) {
-  try {
-    const jwtToken = await verifyToken(event.authorizationToken)
+// In-memory cache for JWKS per issuer
+const jwksCache = new Map()
 
-    return {
-      principalId: jwtToken.sub,
-      policyDocument: {
-        Version: '2012-10-17',
-        Statement: [
-          {
-            Action: 'execute-api:Invoke',
-            Effect: 'Allow',
-            Resource: '*'
-          }
-        ]
-      }
-    }
-  } catch (e) {
-    logger.error('User not authorized', { error: e.message })
+function certToPEM(cert) {
+  const wrapped = cert.match(/.{1,64}/g).join('\n')
+  return `-----BEGIN CERTIFICATE-----\n${wrapped}\n-----END CERTIFICATE-----\n`
+}
 
-    return {
-      principalId: 'user',
-      policyDocument: {
-        Version: '2012-10-17',
-        Statement: [
-          {
-            Action: 'execute-api:Invoke',
-            Effect: 'Deny',
-            Resource: '*'
-          }
-        ]
-      }
+async function getSigningKey(issuer, kid) {
+  const cacheKey = `${issuer}|${kid}`
+  if (jwksCache.has(cacheKey)) {
+    return jwksCache.get(cacheKey)
+  }
+
+  const jwksUri = `${issuer.replace(/\/$/, '')}/.well-known/jwks.json`
+  logger.info('Fetching JWKS', { jwksUri, kid })
+  const { data } = await axios.get(jwksUri)
+  const keys = data.keys || []
+  const jwk = keys.find((k) => k.kid === kid)
+  if (!jwk) {
+    throw new Error('Unable to find a signing key that matches the kid')
+  }
+
+  // Prefer x5c chain
+  if (jwk.x5c && jwk.x5c.length > 0) {
+    const publicKey = certToPEM(jwk.x5c[0])
+    jwksCache.set(cacheKey, publicKey)
+    return publicKey
+  }
+
+  // Fallback could convert n/e (RSA components) to PEM, but Auth0 provides x5c
+  throw new Error('JWKS key does not contain x5c certificate')
+}
+
+function generatePolicy(principalId, effect, resource) {
+  return {
+    principalId,
+    policyDocument: {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Action: 'execute-api:Invoke',
+          Effect: effect,
+          Resource: resource
+        }
+      ]
     }
   }
 }
 
-async function verifyToken(authHeader) {
-  const token = getToken(authHeader)
-  const jwt = jsonwebtoken.decode(token, { complete: true })
+export const handler = async (event) => {
+  try {
+    const authorizationHeader = event.authorizationToken || ''
+    const token = authorizationHeader.split(' ')[1]
+    if (!token) {
+      logger.warn('Missing bearer token')
+      return generatePolicy('unauthorized', 'Deny', event.methodArn)
+    }
 
-  if (!jwt) throw new Error('Invalid JWT token')
+    const decoded = decode(token, { complete: true })
+    if (!decoded || !decoded.header || !decoded.payload) {
+      logger.warn('Failed to decode token')
+      return generatePolicy('unauthorized', 'Deny', event.methodArn)
+    }
 
-  // Get signing key from JWKS endpoint
-  const response = await Axios.get(jwksUrl)
-  const keys = response.data.keys
-  const signingKey = keys.find(k => k.kid === jwt.header.kid)
+    const { kid } = decoded.header
+    const { iss, aud, sub } = decoded.payload
 
-  if (!signingKey) throw new Error('Signing key not found')
+    if (!iss) {
+      logger.warn('Token missing issuer (iss)')
+      return generatePolicy('unauthorized', 'Deny', event.methodArn)
+    }
 
-  // Build a cert
-  const cert = `-----BEGIN CERTIFICATE-----\n${signingKey.x5c[0]}\n-----END CERTIFICATE-----`
+    const publicKey = await getSigningKey(iss, kid)
 
-  // Verify token
-  return jsonwebtoken.verify(token, cert, { algorithms: ['RS256'] })
-}
+    const verified = verify(token, publicKey, {
+      algorithms: ['RS256'],
+      issuer: iss
+      // Optionally enforce audience by env, if provided
+    })
 
-function getToken(authHeader) {
-  if (!authHeader) throw new Error('No authentication header')
-
-  if (!authHeader.toLowerCase().startsWith('bearer '))
-    throw new Error('Invalid authentication header')
-
-  const split = authHeader.split(' ')
-  return split[1]
+    logger.info('Token verified', { sub: verified.sub, aud: verified.aud })
+    return generatePolicy(verified.sub || sub || 'user', 'Allow', event.methodArn)
+  } catch (err) {
+    logger.error('Authorization error', { error: err.message })
+    return generatePolicy('unauthorized', 'Deny', event.methodArn)
+  }
 }

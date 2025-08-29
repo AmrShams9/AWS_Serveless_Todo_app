@@ -25,5 +25,10 @@
     "serverless-iam-roles-per-function": "^3.2.0",
     "uuid": "^9.0.0",
     "winston": "^3.8.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.3",
+    "@babel/preset-env": "^7.28.3",
+    "babel-loader": "^10.0.0"
   }
 }

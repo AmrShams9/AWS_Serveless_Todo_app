@@ -1,68 +1,41 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import middy from '@middy/core'
+import cors from '@middy/http-cors'
+import httpErrorHandler from '@middy/http-error-handler'
+import { updateAttachedFileUrl } from '../../businessLogic/todos.mjs'
+import { createLogger } from '../../utils/logger.mjs'
+import { getUserId } from '../utils.mjs'
 
-const s3 = new S3Client();
-const dynamoDb = new DynamoDBClient();
+const logger = createLogger('http')
 
-export async function generateUploadUrl(event) {
-  console.log('--- Incoming Event ---');
-  console.log(JSON.stringify(event, null, 2));
-
-  // Use default values for testing if authorizer is missing
-  const todoId = event.pathParameters?.todoId;
-  const userId = event.requestContext?.authorizer?.principalId || 'test-user';
-
-  if (!todoId) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: 'Missing todoId in path parameters' })
-    };
-  }
-
-  const bucketName = process.env.ATTACHMENTS_S3_BUCKET;
-  const urlExpiration = parseInt(process.env.SIGNED_URL_EXPIRATION, 10) || 300;
+const generateUploadUrlHandler = async (event) => {
+  logger.info('Starting generateUploadUrl event')
 
   try {
-    // Generate S3 signed URL
-    const putCommand = new PutObjectCommand({
-      Bucket: bucketName,
-      Key: todoId
-    });
+    const userId = getUserId(event)
+    const { todoId } = event.pathParameters
+    const uploadUrl = await updateAttachedFileUrl(userId, todoId)
 
-    const uploadUrl = await getSignedUrl(s3, putCommand, { expiresIn: urlExpiration });
-    console.log('Generated upload URL:', uploadUrl);
+    logger.info('Completing generateUploadUrl event')
 
-    // Update DynamoDB with attachment URL
-    const command = new UpdateItemCommand({
-      TableName: process.env.TODOS_TABLE,
-      Key: {
-        userId: { S: userId },
-        todoId: { S: todoId }
-      },
-      UpdateExpression: 'set attachmentUrl = :a',
-      ExpressionAttributeValues: {
-        ':a': { S: `https://${bucketName}.s3.amazonaws.com/${todoId}` }
-      }
-    });
+      return {
+    statusCode: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*'
+    },
+    body: JSON.stringify({
+      uploadUrl
+    })
+  }
+}  catch (error) {
+    logger.error('Error generating upload URL', { error })
 
-    const result = await dynamoDb.send(command);
-    console.log('DynamoDB update result:', result);
-
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST,OPTIONS'
-      },
-      body: JSON.stringify({ uploadUrl })
-    };
-  } catch (err) {
-    console.error('Failed to generate upload URL or update DynamoDB:', err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ message: 'Failed to generate upload URL', error: err.message })
-    };
+      body: JSON.stringify({ error: 'Failed to generate upload URL' })
+    }
   }
 }
+
+export const handler = middy(generateUploadUrlHandler)
+  .use(httpErrorHandler())
+  .use(cors({ credentials: true }))

@@ -4,80 +4,100 @@ frameworkVersion: '4'
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs20.x
   region: us-east-1
   stage: dev
   environment:
     TODOS_TABLE: Todos-${self:provider.stage}
-    ATTACHMENTS_S3_BUCKET: attachments-bucket-${self:provider.stage}-${aws:accountId}
-    SIGNED_URL_EXPIRATION: 300
+    TODOS_S3_BUCKET: ${self:custom.attachmentsBucketName}
+    AUTH0_DOMAIN: dev-vrcqihwbt0lygs6p.us.auth0.com
   iamRoleStatements:
     - Effect: Allow
       Action:
-        - dynamodb:PutItem
-        - dynamodb:GetItem
-        - dynamodb:UpdateItem
-        - dynamodb:DeleteItem
         - dynamodb:Query
         - dynamodb:Scan
-      Resource: arn:aws:dynamodb:${self:provider.region}:${aws:accountId}:table/${self:provider.environment.TODOS_TABLE}
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: 
+        - { "Fn::GetAtt": [TodosTable, Arn] }
     - Effect: Allow
       Action:
         - s3:PutObject
         - s3:GetObject
         - s3:DeleteObject
-      Resource: arn:aws:s3:::attachments-bucket-${self:provider.stage}-${aws:accountId}/*
+      Resource:
+        - arn:aws:s3:::${self:custom.attachmentsBucketName}/*
+    - Effect: Allow
+      Action:
+        - s3:ListBucket
+      Resource:
+        - arn:aws:s3:::${self:custom.attachmentsBucketName}
 
 functions:
   Auth:
-    handler: src/lambda/auth.handler
+    handler: src/lambda/auth/index.handler
+
   GetTodos:
-    handler:  src/lambda/http/getTodos.getTodos
-    events:
-      - http:
-          path: todos
-          method: get
-          cors: true
-          # authorizer: Auth
+   handler: src/lambda/http/getTodos.handler
+   events:
+    - http:
+        method: get
+        path: todos
+        cors:
+          origin: 'http://localhost:3000'
+          headers:
+            - Content-Type
+            - Authorization
+            - X-Amz-Date
+            - X-Api-Key
+            - X-Amz-Security-Token
+            - X-Amz-User-Agent
+          allowCredentials: true
+        # authorizer: Auth
 
   CreateTodo:
-    handler: src/lambda/http/createTodo.createTodo
+    handler: src/lambda/http/createTodo.handler
     events:
       - http:
-          path: todos
           method: post
+          path: todos
           cors: true
-
-  UpdateTodo:
-    handler: src/lambda/http/updateTodo.updateTodo
-    events:
-      - http:
-          path: todos/{todoId}
-          method: patch
-          cors: true
+          authorizer: Auth
 
   DeleteTodo:
-    handler: src/lambda/http/deleteTodo.deleteTodo
+    handler: src/lambda/http/deleteTodo.handler
     events:
       - http:
-          path: todos/{todoId}
           method: delete
+          path: todos/{todoId}
           cors: true
+          authorizer: Auth
+
+  UpdateTodo:
+    handler: src/lambda/http/updateTodo.handler
+    events:
+      - http:
+          method: patch
+          path: todos/{todoId}
+          cors: true
+          authorizer: Auth
 
   GenerateUploadUrl:
-    handler: src/lambda/http/generateUploadUrl.generateUploadUrl
+    handler: src/lambda/http/generateUploadUrl.handler
     events:
       - http:
-          path: todos/{todoId}/attachment
           method: post
+          path: todos/{todoId}/attachment
           cors: true
+          authorizer: Auth
 
 resources:
   Resources:
     TodosTable:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: ${self:provider.environment.TODOS_TABLE}
         AttributeDefinitions:
           - AttributeName: userId
             AttributeType: S
@@ -89,17 +109,18 @@ resources:
           - AttributeName: todoId
             KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.TODOS_TABLE}
 
     AttachmentsBucket:
       Type: AWS::S3::Bucket
       Properties:
-        BucketName: attachments-bucket-${self:provider.stage}-${aws:accountId}
+        BucketName: ${self:custom.attachmentsBucketName}
         CorsConfiguration:
           CorsRules:
             - AllowedOrigins:
-                - "*"
+                - '*'
               AllowedHeaders:
-                - "*"
+                - '*'
               AllowedMethods:
                 - GET
                 - PUT
@@ -107,3 +128,32 @@ resources:
                 - DELETE
                 - HEAD
               MaxAge: 3000
+
+    GatewayResponseDefault4XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'http://localhost:3000'"
+          gatewayresponse.header.Access-Control-Allow-Credentials: "'true'"
+
+    GatewayResponseDefault5XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseType: DEFAULT_5XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'http://localhost:3000'"
+          gatewayresponse.header.Access-Control-Allow-Credentials: "'true'"
+
+  Outputs:
+    AttachmentsBucketName:
+      Value: !Ref AttachmentsBucket
+      Export:
+        Name: ${self:service}-${self:provider.stage}-attachments-bucket-name
+
+custom:
+  attachmentsBucketName: amr-todos-images-${self:provider.stage}-${aws:accountId}

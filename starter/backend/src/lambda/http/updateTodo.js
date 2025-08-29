@@ -1,65 +1,41 @@
-import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import middy from '@middy/core'
+import cors from '@middy/http-cors'
+import httpErrorHandler from '@middy/http-error-handler'
+import { updateTodo } from '../../businessLogic/todos.mjs'
+import { createLogger } from '../../utils/logger.mjs'
+import { getUserId } from '../utils.mjs'
 
-const dynamoDb = new DynamoDBClient();
+const logger = createLogger('http')
 
-export async function updateTodo(event) {
-  console.log('--- Incoming Event ---');
-  console.log(JSON.stringify(event, null, 2));
+const updateTodoHandler = async (event) => {
+  logger.info('Starting updateToDo event')
 
-  const todoId = event.pathParameters?.todoId;
-  const userId = event.requestContext?.authorizer?.principalId || 'test-user';
-
-  if (!todoId) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: 'Missing todoId in path parameters' })
-    };
-  }
-
-  let updatedTodo;
   try {
-    updatedTodo = JSON.parse(event.body);
-  } catch (err) {
-    console.error('Invalid JSON in request body:', err);
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ message: 'Invalid JSON in request body' })
-    };
-  }
+    const updateRequest = JSON.parse(event.body)
+    const { todoId } = event.pathParameters
+    const userId = getUserId(event)
 
-  const command = new UpdateItemCommand({
-    TableName: process.env.TODOS_TABLE,
-    Key: {
-      userId: { S: userId },
-      todoId: { S: todoId }
+    await updateTodo(userId, todoId, updateRequest)
+
+    logger.info('Completing updateToDo event')
+
+     return {
+    statusCode: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*'
     },
-    UpdateExpression: 'set #n = :n, dueDate = :d, done = :done',
-    ExpressionAttributeNames: { '#n': 'name' },
-    ExpressionAttributeValues: {
-      ':n': { S: updatedTodo.name },
-      ':d': { S: updatedTodo.dueDate },
-      ':done': { BOOL: !!updatedTodo.done }
-    }
-  });
+    body: ''
+  }
+}  catch (error) {
+    logger.error('Error updating todo', { error })
 
-  try {
-    const result = await dynamoDb.send(command);
-    console.log('DynamoDB update result:', result);
-
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'PATCH,OPTIONS'
-      },
-      body: JSON.stringify({ message: 'Todo updated successfully' })
-    };
-  } catch (err) {
-    console.error('Failed to update todo in DynamoDB:', err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ message: 'Failed to update todo', error: err.message })
-    };
+      body: JSON.stringify({ error: 'Failed to update todo' })
+    }
   }
 }
+
+export const handler = middy(updateTodoHandler)
+  .use(httpErrorHandler())
+  .use(cors({ credentials: true }))

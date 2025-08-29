@@ -1,202 +1,154 @@
-<<<<<<< HEAD
-# AWS_Serveless_Todo_app
-Serverless Application developed with AWS Lamda and Auth0
-=======
-# Serverless TODO
+## Serverless TODO App 🚀
 
-To implement this project you need to implement a simple TODO application using AWS Lambda and Serverless framework. Search for all the `TODO:` comments in the code to find the placeholders that you need to implement.
+Build and deploy a full‑stack TODO application powered by AWS Lambda, API Gateway, DynamoDB, S3, and Auth0. Create, list, update, delete, and attach images to TODOs with a modern React frontend.
 
-# Functionality of the application
+### Highlights
+- **Serverless backend**: API Gateway + Lambda (Node 20), DynamoDB, S3
+- **Auth**: Custom API Gateway Lambda Authorizer validating Auth0 JWTs
+- **Frontend**: React + Auth0 SDK + Axios
+- **Attachments**: S3 pre‑signed uploads with image preview
 
-This appliation will allow to create/remove/update/get TODO items. Each TODO item can optionally have an attachment image. Each user only has access to TODO items that he/she has created. 
+---
 
-# Functions to be implemented
+## Architecture
+- API Gateway exposes REST endpoints → Lambda handlers in `starter/backend/src/lambda/http` → business logic → DynamoDB (`Todos-<stage>`).
+- S3 bucket stores attachments. Upload is done directly from the client via a pre‑signed URL returned by the API.
+- Auth0 issues JWTs; the custom authorizer (`starter/backend/src/lambda/auth/index.mjs`) verifies RS256 tokens via JWKS.
 
-To implement this project you need to implement the following functions and configure them in the `serverless.yml` file:
+<img alt="App" src="starter/client/public/logo512.png" width="120" />
 
-* `Auth` - this function should implement a custom authorizer for API Gateway that should be added to all other functions.
-* `GetTodos` - should return all TODOs for a current user. 
-* `CreateTodo` - should create a new TODO for a current user. A shape of data send by a client application to this function can be found in the `CreateTodoRequest.ts` file
-* `UpdateTodo` - should update a TODO item created by a current user. A shape of data send by a client application to this function can be found in the `UpdateTodoRequest.ts` file
-* `DeleteTodo` - should delete a TODO item created by a current user. Expects an id of a TODO item to remove.
-* `GenerateUploadUrl` - returns a presigned url that can be used to upload an attachment file for a TODO item. 
+---
 
-All functions are already connected to appriate events from API gateway
-
-An id of a user can be extracted from a JWT token passed by a client
-
-You also need to add any necessary resources to the `resources` section of the `serverless.yml` file such as DynamoDB table and and S3 bucket.
-
-# Frontend
-
-The `client` folder contains a web application that can use the API that should be developed in the project.
-
-To use it please edit the `config.ts` file in the `client` folder:
-
-```ts
-const apiId = '...' API Gateway id
-export const apiEndpoint = `https://${apiId}.execute-api.us-east-1.amazonaws.com/dev`
-
-export const authConfig = {
-  domain: '...',    // Domain from Auth0
-  clientId: '...',  // Client id from an Auth0 application
-  callbackUrl: 'http://localhost:3000/callback'
-}
-```
-
-
-# Suggestions
-
-To store TODO items you might want to use a DynamoDB table with local secondary index(es). A create a local secondary index you need to a create a DynamoDB resource like this:
-
-```yml
-
-TodosTable:
-  Type: AWS::DynamoDB::Table
-  Properties:
-    AttributeDefinitions:
-      - AttributeName: partitionKey
-        AttributeType: S
-      - AttributeName: sortKey
-        AttributeType: S
-      - AttributeName: indexKey
-        AttributeType: S
-    KeySchema:
-      - AttributeName: partitionKey
-        KeyType: HASH
-      - AttributeName: sortKey
-        KeyType: RANGE
-    BillingMode: PAY_PER_REQUEST
-    TableName: ${self:provider.environment.TODOS_TABLE}
-    LocalSecondaryIndexes:
-      - IndexName: ${self:provider.environment.INDEX_NAME}
-        KeySchema:
-          - AttributeName: partitionKey
-            KeyType: HASH
-          - AttributeName: indexKey
-            KeyType: RANGE
-        Projection:
-          ProjectionType: ALL # What attributes will be copied to an index
-
-```
-
-To query an index you need to use the `query()` method like:
-
-```ts
-await this.dynamoDBClient
-  .query({
-    TableName: 'table-name',
-    IndexName: 'index-name',
-    KeyConditionExpression: 'paritionKey = :paritionKey',
-    ExpressionAttributeValues: {
-      ':paritionKey': partitionKeyValue
-    }
-  })
-  .promise()
-```
-
-# How to run the application
-
-## Backend
-
-To deploy an application run the following commands:
-
-```
-cd backend
+## Quick Start
+1) Backend
+```bash
+cd starter/backend
 npm install
-sls deploy -v
+npx serverless deploy -v
 ```
 
-## Frontend
-
-To run a client application first edit the `client/src/config.ts` file to set correct parameters. And then run the following commands
-
-```
-cd client
+2) Frontend
+```bash
+cd starter/client
 npm install
-npm run start
+npm start
 ```
 
-This should start a development server with the React application that will interact with the serverless TODO application.
-
-# "curl" commands
-
-An alternative way to test your API you can use the following curl commands. For all examples below you would need to replace:
-
-* {API-ID} - with you API's ID that is returned by the Serverless framework
-* {JWT-token} - a JWT token from the web application
-
-## Get all TODOs
-
-To fetch all TODOs you would need to send the following GET request:
-
-```sh
-curl --location --request GET 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos' \
---header 'Authorization: Bearer {JWT-token}'
+3) Configure environment
+- Backend `serverless.yml` (already set up in this repo):
+  - `TODOS_TABLE`, `TODOS_S3_BUCKET`, `AUTH0_DOMAIN`
+- Frontend `.env` (example):
+```bash
+REACT_APP_API_ENDPOINT=https://<apiId>.execute-api.us-east-1.amazonaws.com/dev
+REACT_APP_AUTH0_DOMAIN=<your-auth0-domain>
+REACT_APP_AUTH0_CLIENT_ID=<your-auth0-client-id>
+REACT_APP_AUTH0_AUDIENCE=https://<your-api-identifier>
 ```
 
-## Create a new TODO
+---
 
-To create a new TODO you would need to send a POST request and provide a JSON with two mandatory fields: `name` and `dueDate`.
+## API Reference
 
-```sh
-curl --location --request POST 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos' \
---header 'Authorization: Bearer {JWT-token}' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "name": "Buy bread",
-    "dueDate": "2022-12-12"
-}'
-```
+### Auth
+- **Type**: Bearer JWT (Auth0) in `Authorization: Bearer <token>`
+- **Authorizer**: Lambda authorizer verifies RS256 and issuer
 
-## Update a TODO
-
-To update a TODO you would need to send a PATCH request and provide one of the following fields: `name`, `dueDate`, and boolean `done`.
-
-You would also need to provide an ID of an existing TODO in the URL.
-
-```sh
-curl --location --request PATCH 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos/{TODO-ID}' \
---header 'Authorization: Bearer {JWT-token}' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "name": "Buy bread",
-    "dueDate": "2022-12-12",
-    "done": true
-}'
-```
-
-## Remove TODO
-
-To remove a TODO you would need to send a `DELETE` request, and provide an ID of an existing TODO, as well as other parameters.
-
-```sh
-curl --location --request DELETE 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos/{TODO-ID}' \
---header 'Authorization: Bearer {JWT-token}'
-```
-
-
-## Upload image attachment
-
-To upload an image attachment you would first need to send a POST request to the following URL:
-
-```sh
-curl --location --request POST 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos/{TODO-ID}/attachment' \
---header 'Authorization: Bearer {JWT-token}'
-```
-
-It should return a response like this that would provide a pre-signed URL:
-
+### List TODOs
+- **Method**: GET
+- **Path**: `/todos`
+- **Auth**: Required
+- **Response**:
 ```json
 {
-    "uploadUrl": "https://serverless-c4-todo-images.s3.us-east-1.amazonaws.com/...&x-id=PutObject"
+  "items": [
+    { "todoId": "uuid", "name": "string", "dueDate": "YYYY-MM-DD", "done": false, "attachmentUrl": "https://..." }
+  ]
 }
 ```
 
-We can then use curl command to upload an image (`image.jpg` in this example) to S3 using this pre-signed URL:
-
-```sh
-curl -X PUT -T image.jpg -L "https://serverless-c4-todo-images.s3.us-east-1.amazonaws.com/...&x-id=PutObject"
+### Create TODO
+- **Method**: POST
+- **Path**: `/todos`
+- **Auth**: Required
+- **Request**:
+```json
+{ "name": "Buy bread", "dueDate": "2025-12-12" }
+```
+- **Response**:
+```json
+{ "item": { "todoId": "uuid", "name": "Buy bread", "dueDate": "2025-12-12", "done": false } }
 ```
 
->>>>>>> b71016e (Initial commit)
+### Update TODO
+- **Method**: PATCH
+- **Path**: `/todos/{todoId}`
+- **Auth**: Required
+- **Request**:
+```json
+{ "name": "Buy milk", "dueDate": "2025-12-20", "done": true }
+```
+- **Response**:
+```json
+{ "message": "Todo updated successfully" }
+```
+
+### Delete TODO
+- **Method**: DELETE
+- **Path**: `/todos/{todoId}`
+- **Auth**: Required
+- **Response**: `204 No Content`
+
+### Generate Upload URL
+- **Method**: POST
+- **Path**: `/todos/{todoId}/attachment`
+- **Auth**: Required
+- **Response**:
+```json
+{ "uploadUrl": "https://<bucket>.s3.amazonaws.com/<todoId>?X-Amz-Algorithm=..." }
+```
+
+---
+
+## cURL Examples
+Replace `{API-ID}` and `{JWT}`.
+
+```bash
+# List
+curl -H "Authorization: Bearer {JWT}" \
+  https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos
+
+# Create
+curl -X POST -H "Authorization: Bearer {JWT}" -H "Content-Type: application/json" \
+  -d '{"name":"Buy bread","dueDate":"2025-12-12"}' \
+  https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos
+
+# Update
+curl -X PATCH -H "Authorization: Bearer {JWT}" -H "Content-Type: application/json" \
+  -d '{"name":"Buy milk","dueDate":"2025-12-20","done":true}' \
+  https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos/{TODO-ID}
+
+# Delete
+curl -X DELETE -H "Authorization: Bearer {JWT}" \
+  https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos/{TODO-ID}
+
+# Get upload URL
+curl -X POST -H "Authorization: Bearer {JWT}" \
+  https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos/{TODO-ID}/attachment
+```
+
+---
+
+## Troubleshooting
+- **CORS error on failures**: API Gateway error paths may omit CORS. This repo adds GatewayResponses for 4XX/5XX with `Access-Control-Allow-Origin` and credentials.
+- **401/403 from authorizer**: Ensure `AUTH0_DOMAIN` is set on backend and the token issuer matches. Use a custom API audience (not `…/api/v2/`).
+- **500 on DELETE**: Check CloudWatch logs for `DeleteTodo` and authorizer output.
+
+---
+
+## Screenshots
+<img alt="App Logo" src="starter/client/public/logo192.png" width="72" />
+
+---
+
+## License
+MIT

@@ -1,7 +1,12 @@
 import { parseUserId } from '../auth/utils.mjs'
+import { APIGatewayProxyEvent } from "aws-lambda";
 
 export function getUserId(event) {
-  const authorization = event.headers.Authorization
+  const headers = event.headers || {}
+  const authorization = headers.Authorization || headers.authorization
+  if (!authorization) {
+    throw new Error('Missing Authorization header')
+  }
   const split = authorization.split(' ')
   const jwtToken = split[1]
 
