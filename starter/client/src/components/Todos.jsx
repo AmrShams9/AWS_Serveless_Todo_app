@@ -76,14 +76,8 @@ export function Todos() {
 
   async function onTodoDelete(todoId) {
     try {
-      console.log('[Todos] Requesting token for delete', {
-        audience: `https://dev-vrcqihwbt0lygs6p.us.auth0.com/api/v2/`,
-        scope: 'delete:todo'
-      })
-      const accessToken = await getAccessTokenSilently({
-        audience: `https://dev-vrcqihwbt0lygs6p.us.auth0.com/api/v2/`,
-        scope: 'delete:todo'
-      })
+      console.log('[Todos] Requesting token for delete')
+      const accessToken = await getAccessTokenSilently()
       console.log('[Todos] Token received for delete?', {
         hasToken: Boolean(accessToken),
         tokenPrefix: accessToken ? accessToken.slice(0, 12) + '…' : null
@@ -99,14 +93,8 @@ export function Todos() {
   async function onTodoCheck(pos) {
     try {
       const todo = todos[pos]
-      console.log('[Todos] Requesting token for patch', {
-        audience: `https://dev-vrcqihwbt0lygs6p.us.auth0.com/api/v2/`,
-        scope: 'write:todo'
-      })
-      const accessToken = await getAccessTokenSilently({
-        audience: `https://dev-vrcqihwbt0lygs6p.us.auth0.com/api/v2/`,
-        scope: 'write:todo'
-      })
+      console.log('[Todos] Requesting token for patch')
+      const accessToken = await getAccessTokenSilently()
       console.log('[Todos] Token received for patch?', {
         hasToken: Boolean(accessToken),
         tokenPrefix: accessToken ? accessToken.slice(0, 12) + '…' : null
@@ -144,14 +132,8 @@ export function Todos() {
   useEffect(() => {
     async function foo() {
       try {
-        console.log('[Todos] Requesting token for list', {
-          audience: `https://dev-vrcqihwbt0lygs6p.us.auth0.com/api/v2/`,
-          scope: 'read:todos'
-        })
-        const accessToken = await getAccessTokenSilently({
-          audience: `https://dev-vrcqihwbt0lygs6p.us.auth0.com/api/v2/`,
-          scope: 'read:todos'
-        })
+        console.log('[Todos] Requesting token for list')
+        const accessToken = await getAccessTokenSilently()
         console.log('[Todos] Token received for list?', {
           hasToken: Boolean(accessToken),
           tokenPrefix: accessToken ? accessToken.slice(0, 12) + '…' : null

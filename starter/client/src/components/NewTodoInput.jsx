@@ -11,18 +11,7 @@ export function NewTodoInput({ onNewTodo }) {
 
   const onTodoCreate = async (event) => {
     try {
-      console.log('[NewTodoInput] Requesting access token via getAccessTokenSilently', {
-        audience: `https://dev-d1edgpzrydjvjwin.us.auth0.com/api/v2/`,
-        scope: 'write:todos'
-      })
-      const accessToken = await getAccessTokenSilently({
-        audience: `https://dev-d1edgpzrydjvjwin.us.auth0.com/api/v2/`,
-        scope: 'write:todos'
-      })
-      console.log('[NewTodoInput] Received access token?', {
-        hasToken: Boolean(accessToken),
-        tokenPrefix: accessToken ? accessToken.slice(0, 12) + '…' : null
-      })
+      const accessToken = await getAccessTokenSilently()
       const dueDate = calculateDueDate()
       const createdTodo = await createTodo(accessToken, {
         name: newTodoName,
@@ -30,7 +19,7 @@ export function NewTodoInput({ onNewTodo }) {
       })
       onNewTodo(createdTodo)
     } catch (e) {
-      console.error('[NewTodoInput] Failed to create a new TODO. Token fetch or API call failed', e)
+      console.log('Failed to created a new TODO', e)
       alert('Todo creation failed')
     }
   }

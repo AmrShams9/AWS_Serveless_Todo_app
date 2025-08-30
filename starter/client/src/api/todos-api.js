@@ -71,6 +71,6 @@ export async function uploadFile(uploadUrl, file) {
 }
 
 
-REACT_APP_AUTH0_DOMAIN='dev-vrcqihwbt0lygs6p.us.auth0.com'
-REACT_APP_AUTH0_CLIENT_ID='2ACRQFFUptl3Wzt7JbklgVgTOKGOobQQ'
-REACT_APP_API_ENDPOINT='https://amc3p9fhy8.execute-api.us-east-1.amazonaws.com/dev'
+// REACT_APP_AUTH0_DOMAIN='dev-vrcqihwbt0lygs6p.us.auth0.com'
+// REACT_APP_AUTH0_CLIENT_ID='2ACRQFFUptl3Wzt7JbklgVgTOKGOobQQ'
+// REACT_APP_API_ENDPOINT='https://amc3p9fhy8.execute-api.us-east-1.amazonaws.com/dev'

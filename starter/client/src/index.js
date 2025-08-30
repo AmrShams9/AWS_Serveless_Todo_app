@@ -14,6 +14,8 @@ ReactDOM.render(
     redirectUri={window.location.origin}
     audience={`https://dev-vrcqihwbt0lygs6p.us.auth0.com/api/v2/`}
     scope="read:todo write:todo delete:todo"
+    useRefreshTokens={true}  // Enable refresh tokens
+    cacheLocation="localstorage"  // Better token persistence
   >
     <App />
   </Auth0Provider>,

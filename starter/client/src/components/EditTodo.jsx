@@ -42,18 +42,7 @@ export function EditTodo() {
       }
 
       setUploadState(UploadState.FetchingPresignedUrl)
-      console.log('[EditTodo] Requesting token for upload', {
-        audience: `https://dev-d1edgpzrydjvjwin.us.auth0.com/api/v2/`,
-        scope: 'write:todos'
-      })
-      const accessToken = await getAccessTokenSilently({
-        audience: `https://dev-d1edgpzrydjvjwin.us.auth0.com/api/v2/`,
-        scope: 'write:todos'
-      })
-      console.log('[EditTodo] Token received for upload?', {
-        hasToken: Boolean(accessToken),
-        tokenPrefix: accessToken ? accessToken.slice(0, 12) + '…' : null
-      })
+      const accessToken = await getAccessTokenSilently()
       const uploadUrl = await getUploadUrl(accessToken, todoId)
 
       setUploadState(UploadState.UploadingFile)

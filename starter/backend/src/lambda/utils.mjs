@@ -1,5 +1,4 @@
 import { parseUserId } from '../auth/utils.mjs'
-import { APIGatewayProxyEvent } from "aws-lambda";
 
 export function getUserId(event) {
   const headers = event.headers || {}
